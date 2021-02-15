@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import random
 import requests
 import time
 import base64
@@ -1311,10 +1312,15 @@ class ScyllaPodCluster(cluster.BaseScyllaCluster, PodCluster):
 
         ClusterHealthValidatorEvent.Done(message="Kubernetes monitoring health check finished").publish()
 
-    def restart_scylla(self):
+    def restart_scylla(self, nodes=None, random=False):
+        # TODO: add support for the "nodes" param to have compatible logic with
+        # other backends.
         self.k8s_cluster.kubectl("rollout restart statefulset", namespace=self.namespace)
         readiness_timeout = self.get_nodes_reboot_timeout(len(self.nodes))
-        for statefulset in KubernetesOps.list_statefulsets(self.k8s_cluster, namespace=self.namespace):
+        statefulsets = KubernetesOps.list_statefulsets(self.k8s_cluster, namespace=self.namespace)
+        if random:
+            statefulsets = random.sample(statefulsets, len(statefulsets))
+        for statefulset in statefulsets:
             self.k8s_cluster.kubectl(
                 f"rollout status statefulset/{statefulset.metadata.name} "
                 f"--watch=true --timeout={readiness_timeout}m",
