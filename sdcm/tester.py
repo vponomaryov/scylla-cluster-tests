@@ -2203,9 +2203,17 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
         return int(result.stdout.strip())
 
     @retrying(n=3, sleep_time=15, allowed_exceptions=(AssertionError,))
-    def hints_sending_in_progress(self):
-        query = "sum(rate(scylla_hints_manager_sent{}[1m]))"
+    def hints_sending_in_progress(self, db_node_ip: str = ""):
+        # Example of query with sent hints for all nodes:
+        #    sum(rate(scylla_hints_manager_sent{}[1m]))
+        # Example of query with sent hints for specific node:
+        #    sum(rate(scylla_hints_manager_sent{instance="[10.0.1.190]"}[1m]))
+        query = "sum(rate(scylla_hints_manager_sent{%s}[1m]))"
+        if db_node_ip:
+            db_node_ip = f'instance="[{db_node_ip}]"'
+        query = query % db_node_ip
         now = time.time()
+
         # check status of sending hints during last minute range
         results = self.prometheus_db.query(query=query, start=now - 60, end=now)
         self.log.debug("scylla_hints_manager_sent: %s", results)

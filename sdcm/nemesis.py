@@ -1776,11 +1776,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
         self.log.debug("Execute a complete repair for target node")
         self.repair_nodetool_repair()
-    # Temporary disable due to https://trello.com/c/Ru0T9Nmu/1239-fix-validatehintedhandoff-nemesis
-    # TODO: Bentsi to fix this nemesis or investigate if it's a real scylla issue.
-    # TODO: Bentsi to fix this nemesis or investigate if it's a real scylla issue.
 
-    def disable_disrupt_validate_hh_short_downtime(self):  # pylint: disable=invalid-name
+    def disrupt_validate_hh_short_downtime(self):
         """
             Validates that hinted handoff mechanism works: there were no drops and errors
             during short stop of one of the nodes in cluster
@@ -1809,7 +1806,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                       text='Wait for target_node to be seen as UN by others')
 
         time.sleep(120)  # Wait to complete hints sending
-        assert self.tester.hints_sending_in_progress() is False, "Hints are sent too slow"
+        assert not self.tester.hints_sending_in_progress(
+            self.target_node.private_ip_address), "Hints are sent too slow"
         self.tester.verify_no_drops_and_errors(starting_from=start_time)
 
     def _validate_snapshot(self, nodetool_cmd: str, snapshot_content: namedtuple):
@@ -3528,7 +3526,7 @@ class ValidateHintedHandoffShortDowntime(Nemesis):
 
     @log_time_elapsed_and_status
     def disrupt(self):
-        self.disable_disrupt_validate_hh_short_downtime()
+        self.disrupt_validate_hh_short_downtime()
 
 
 class SnapshotOperations(Nemesis):
