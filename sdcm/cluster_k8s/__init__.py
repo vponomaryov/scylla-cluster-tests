@@ -313,6 +313,13 @@ class KubernetesCluster:
 
     @log_run_info
     def deploy_scylla_cluster(self, config: str, target_mgmt_agent_to_minio: bool = False) -> None:
+        self.kubectl("patch storageclass standard -p "
+                     "'{\"metadata\": {\"annotations\":{"
+                     "\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}'")
+        self.kubectl("patch storageclass local-raid-disks -p "
+                     "'{\"metadata\": {\"annotations\":{"
+                     "\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'")
+
         LOGGER.info("Create and initialize a Scylla cluster")
         if target_mgmt_agent_to_minio:
             # Create kubernetes secret that holds scylla manager agent configuration
