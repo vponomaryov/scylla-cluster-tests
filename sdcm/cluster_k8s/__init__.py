@@ -551,7 +551,7 @@ class KubernetesCluster(metaclass=abc.ABCMeta):
                     'scyllaAgentConfig': 'scylla-agent-config',
                     'members': 0,
                     'storage': {
-                        'storageClassName': 'local-raid-disks',
+                        'storageClassName': 'standard',
                         'capacity': f"{self.params.get('k8s_scylla_disk_gi')}Gi"
                     },
                     'resources': {
