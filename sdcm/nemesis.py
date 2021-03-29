@@ -697,8 +697,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 'drain_k8s_node',
                 # NOTE: enable below methods when it's support fully implemented
                 # https://trello.com/c/LrAObHPC/3119-fix-gce-node-termination-nemesis-on-k8s
-                # 'terminate_k8s_host',
-                # 'terminate_k8s_node',
+                'terminate_k8s_host',
+                'terminate_k8s_node',
             ]
         raise UnsupportedNemesis("Only GkeScyllaPodCluster is supported")
 
