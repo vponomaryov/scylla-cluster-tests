@@ -6517,7 +6517,7 @@
     "style": "dark",
     "tags": [
       "master",
-      "longevity-twcs-3h"
+      "$test_name"
     ],
     "templating": {
       "list": [
@@ -6792,7 +6792,7 @@
       ]
     },
     "timezone": "utc",
-    "title": "[longevity-twcs-3h] Scylla Per Server Metrics Nemesis Master",
+    "title": "[$test_name] Scylla Per Server Metrics Nemesis Master",
     "uid": "J1T2FZ57za",
     "version": 1
   }
