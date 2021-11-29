@@ -63,12 +63,17 @@ def wait_for(func, step=1, text=None, timeout=None, throw_exc=True, **kwargs):
     except Exception as ex:  # pylint: disable=broad-except
         err = f"Wait for: {text or func.__name__}: timeout - {timeout} seconds - expired"
         LOGGER.error(err)
-        if hasattr(ex, 'last_attempt') and ex.last_attempt.exception() is not None:  # pylint: disable=no-member
-            LOGGER.error("last error: %r", ex.last_attempt.exception())  # pylint: disable=no-member
+        if hasattr(ex, 'last_attempt'):
+            if getattr(ex.last_attempt, 'exception', None) is not None:
+                LOGGER.error("last error: %r", ex.last_attempt.exception())
+            else:
+                LOGGER.error("last error: %r", ex.last_attempt)
         else:
             LOGGER.error("last error: %r", ex)
         if throw_exc:
-            if hasattr(ex, 'last_attempt') and not ex.last_attempt._result:  # pylint: disable=protected-access,no-member
+            if (hasattr(ex, 'last_attempt')
+                    and hasattr(ex.last_attempt, "_result")  # pylint: disable=no-member
+                    and not ex.last_attempt._result):  # pylint: disable=protected-access,no-member
                 raise RetryError(err) from ex
             raise
 
