@@ -488,7 +488,8 @@ class KubernetesCluster(metaclass=abc.ABCMeta):  # pylint: disable=too-many-publ
             f"show chart {chart_name} --devel --repo {repo} --version {chart_version}")
         for line in chart_info.split("\n"):
             if line.startswith("appVersion:"):
-                return f"scylladb/scylla-operator:{line.split(':')[-1].strip()}"
+                found_app_version = line.split(':')[-1].strip().replace('"', '').replace("'", "")
+                return f"scylladb/scylla-operator:{found_app_version}"
         raise ValueError(
             f"Cannot get operator image version from the '{chart_name}' chart located at "
             f"'{repo}' having '{chart_version}' version")
