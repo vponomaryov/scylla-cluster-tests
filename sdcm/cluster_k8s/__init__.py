@@ -823,7 +823,9 @@ class KubernetesCluster(metaclass=abc.ABCMeta):  # pylint: disable=too-many-publ
         affinity_modifiers = node_pool.affinity_modifiers
         if node_prepare_config:
             LOGGER.info("Install DaemonSets required by scylla nodes")
-            scylla_machine_image_args = ['--setup-disks'] if self.is_performance_tuning_enabled else ['--all']
+            # scylla_machine_image_args = ['--setup-disks'] if self.is_performance_tuning_enabled else ['--all']
+            # DEBUG: use only setup of disks to check that EKS clusters stay ok after 12 hours
+            scylla_machine_image_args = ['--setup-disks']
 
             def scylla_machine_image_args_modifier(obj):
                 if obj["kind"] != "DaemonSet":
