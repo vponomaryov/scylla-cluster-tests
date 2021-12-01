@@ -663,6 +663,33 @@ class KubernetesCluster(metaclass=abc.ABCMeta):  # pylint: disable=too-many-publ
             LOGGER.info("Using following predefined scylla-operator upgrade chart version: %s",
                         new_chart_version)
 
+        # Upgrade CRDs if new chart version is newer than v1.5.0
+        # Details:
+        #   https://helm.sh/docs/chart_best_practices/custom_resource_definitions/#some-caveats-and-explanations
+        if version.parse(new_chart_version.split("-")[0]) > version.parse("v1.5.0"):
+            LOGGER.info("Upgrade Scylla Operator CRDs")
+            try:
+                with TemporaryDirectory() as tmpdir:
+                    # helm pull {new_helm_repo}/scylla-operator \
+                    #   --version {new_chart_version} \
+                    #   --devel \
+                    #   --destination "`pwd`" \
+                    #   --untar \
+                    # && find "`pwd`"/scylla-operator/crds/ -name '*.yaml' -printf '-f=%p ' \
+                    #   | xargs kubectl apply
+                    self.helm(
+                        f"pull {local_repo_name}/scylla-operator --devel --untar "
+                        f"--version {new_chart_version} --destination {tmpdir}")
+                    crd_basedir = os.path.join(tmpdir, 'scylla-operator/crds')
+                    for current_file in os.listdir(crd_basedir):
+                        if not (current_file.endswith(".yaml") or current_file.endswith(".yml")):
+                            continue
+                        self.apply_file(os.path.join(crd_basedir, current_file), modifiers=[], envsubst=False)
+            except Exception as exc:  # pylint: disable=broad-except
+                # NOTE: it will fail to cleanup created dir, but it makes no harm to us at all
+                LOGGER.info("DEBUG: caught exception updating CRDs: %s", exc)
+            LOGGER.info("DEBUG: end of Scylla Operator CRDs update")
+
         # Get existing scylla-operator helm chart values
         values = HelmValues(json.loads(self.helm(
             "get values scylla-operator -o json", namespace=SCYLLA_OPERATOR_NAMESPACE)))
