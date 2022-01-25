@@ -1326,6 +1326,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         it's used to cover one improvement of compaction.
         The increase frequency of checking abortion is very useful for truncate.
         """
+        raise UnsupportedNemesis("https://github.com/scylladb/scylla-cluster-tests/issues/4374")
         ks_name = 'ks_truncate_large_partition'
         table = 'test_table'
         stress_cmd = "scylla-bench -workload=sequential -mode=write -replication-factor=3 -partition-count=10 " + \
