@@ -4,8 +4,8 @@ stress_cmd: ["cassandra-stress write cl=QUORUM duration=1m -schema 'replication(
              "cassandra-stress counter_write cl=QUORUM duration=1m -schema 'replication(factor=3) compaction(strategy=DateTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=5 -pop seq=1..10000000"
              ]
 
-prepare_write_cmd:  ["scylla-bench -workload=sequential -mode=write -max-rate=300 -replication-factor=3 -partition-count=10 -clustering-row-count=100 -clustering-row-size=5120 -concurrency=7 -rows-per-request=10",
-                     "scylla-bench -workload=uniform -mode=read -replication-factor=3 -partition-count=10 -clustering-row-count=100 -clustering-row-size=5120 -rows-per-request=10 -concurrency=7 -max-rate=32000 -duration=1m"
+prepare_write_cmd:  ["scylla-bench -workload=sequential -mode=write -max-rate=300 -replication-factor=3 -partition-count=10 -clustering-row-count=100 -clustering-row-size=5120 -concurrency=7 -rows-per-request=10 -hdr-latency-units ms",
+                     "scylla-bench -workload=uniform -mode=read -replication-factor=3 -partition-count=10 -clustering-row-count=100 -clustering-row-size=5120 -rows-per-request=10 -concurrency=7 -max-rate=32000 -duration=1m -hdr-latency-units ms"
                     ]
 
 n_loaders: 1

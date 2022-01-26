@@ -1,7 +1,7 @@
 test_duration: 255
 
-stress_cmd:      "scylla-bench -workload=uniform -mode=counter_update -replication-factor=3 -partition-count=1000 -clustering-row-count=10 -concurrency 64 -duration 180m -validate-data"
-stress_read_cmd: "scylla-bench -workload=uniform -mode=counter_read   -replication-factor=3 -partition-count=1000 -clustering-row-count=10 -concurrency 16 -duration 180m -validate-data"
+stress_cmd:      "scylla-bench -workload=uniform -mode=counter_update -replication-factor=3 -partition-count=1000 -clustering-row-count=10 -concurrency 64 -duration 180m -validate-data -hdr-latency-units ms"
+stress_read_cmd: "scylla-bench -workload=uniform -mode=counter_read   -replication-factor=3 -partition-count=1000 -clustering-row-count=10 -concurrency 16 -duration 180m -validate-data -hdr-latency-units ms"
 
 n_db_nodes: 4
 n_loaders:  1
