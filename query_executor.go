@@ -126,7 +126,33 @@ func (q *queryExecutor) do(ctx context.Context, qry ExecutableQuery, hostIter Ne
 
 		iter = q.attemptQuery(ctx, qry, conn)
 		iter.host = selectedHost.Info()
-		// Update host
+
+		// Exit if the query was successful
+		if iter.err == nil {
+			selectedHost.Mark(nil)
+			return iter
+		}
+		lastErr = iter.err
+
+		// Process retry logic after getting an error for the query
+		if rt != nil && rt.Attempt(qry) {
+			switch rt.GetRetryType(iter.err) {
+			case Retry:
+				// retry on the same host
+				continue
+			case Rethrow, Ignore:
+				return iter
+			case RetryNextHost:
+				// retry on the next host
+				selectedHost = hostIter()
+				continue
+			default:
+				// Undefined? Return nil and error, this will panic in the requester
+				return &Iter{err: ErrUnknownRetryType}
+			}
+		}
+
+		// Update the host having no more retries left and an error is the result of the query
 		switch iter.err {
 		case context.Canceled, context.DeadlineExceeded, ErrNotFound:
 			// those errors represents logical errors, they should not count
@@ -135,29 +161,6 @@ func (q *queryExecutor) do(ctx context.Context, qry ExecutableQuery, hostIter Ne
 			return iter
 		default:
 			selectedHost.Mark(iter.err)
-		}
-
-		// Exit if the query was successful
-		// or no retry policy defined or retry attempts were reached
-		if iter.err == nil || rt == nil || !rt.Attempt(qry) {
-			return iter
-		}
-		lastErr = iter.err
-
-		// If query is unsuccessful, check the error with RetryPolicy to retry
-		switch rt.GetRetryType(iter.err) {
-		case Retry:
-			// retry on the same host
-			continue
-		case Rethrow, Ignore:
-			return iter
-		case RetryNextHost:
-			// retry on the next host
-			selectedHost = hostIter()
-			continue
-		default:
-			// Undefined? Return nil and error, this will panic in the requester
-			return &Iter{err: ErrUnknownRetryType}
 		}
 	}
 
