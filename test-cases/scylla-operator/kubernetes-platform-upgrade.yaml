@@ -34,3 +34,6 @@ k8s_scylla_operator_docker_image: ''  # default value from the Helm chart will b
 
 use_mgmt: false
 user_prefix: 'kubernetes-platform-upgrade'
+
+# TODO: remove it after testing the operator 1.8 RC
+eks_cluster_version: '1.23'
