@@ -26,9 +26,13 @@ spec:
       - name: haproxy-ingress
         image: haproxytech/kubernetes-ingress:1.9.0
         args:
-        - --configmap=haproxy-controller/haproxy-kubernetes-ingress
-        - --default-backend-service=haproxy-controller/haproxy-kubernetes-ingress-default-backend
-        - --default-ssl-certificate=haproxy-controller/ingress-default-ssl-certificate
+        - --disable-ipv6
+        - --ipv4-bind-address=0.0.0.0
+        - --http-bind-port=8080
+        - --https-bind-port=8443
+        - --configmap=haproxy-ingress/haproxy-ingress
+        - --default-backend-service=haproxy-ingress/ingress-default-backend
+        - --default-ssl-certificate=haproxy-ingress/ingress-default-ssl-certificate
         - --log=trace
         securityContext:
           runAsUser:  1000
@@ -51,9 +55,9 @@ spec:
             port: 1042
         ports:
         - name: http
-          containerPort: 80
+          containerPort: 8080
         - name: https
-          containerPort: 443
+          containerPort: 8443
         - name: stat
           containerPort: 1024
         env:

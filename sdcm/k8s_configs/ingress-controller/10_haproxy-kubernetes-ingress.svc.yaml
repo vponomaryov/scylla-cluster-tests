@@ -13,14 +13,18 @@ spec:
     app.kubernetes.io/name: haproxy-ingress
   type: LoadBalancer
   ports:
-  - name: cql
-    port: 9042
+  - name: http
+    port: 80
     protocol: TCP
-    targetPort: 80
+    targetPort: 8080
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
   - name: cql-ssl
     port: 9142
     protocol: TCP
-    targetPort: 443
+    targetPort: 8443
   - name: stat
     port: 1024
     protocol: TCP
