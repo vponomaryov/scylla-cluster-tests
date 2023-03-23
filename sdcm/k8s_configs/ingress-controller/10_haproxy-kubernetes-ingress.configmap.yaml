@@ -8,3 +8,4 @@ data:
   maxconn: "$HAPROXY_MAXCONN"
   src-ip-header: "True-Client-IP"
   http-connection-mode: "http-keep-alive"
+  hard-stop-after: "5m"
