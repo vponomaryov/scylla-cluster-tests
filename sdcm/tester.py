@@ -1431,7 +1431,7 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             cluster.add_nodes(count=count, enable_auto_bootstrap=cluster.auto_bootstrap)
 
         add_nodes_in_parallel = ParallelObject(
-            timeout=3600, objects=[[cluster] for cluster in clusters], num_workers=len(clusters))
+            timeout=3600 * 2, objects=[[cluster] for cluster in clusters], num_workers=len(clusters))
         add_nodes_in_parallel.run(
             func=_add_and_wait_for_cluster_nodes,
             unpack_objects=True, ignore_exceptions=False)
