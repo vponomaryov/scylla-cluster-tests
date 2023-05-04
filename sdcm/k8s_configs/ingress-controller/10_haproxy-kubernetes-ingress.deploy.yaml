@@ -31,8 +31,8 @@ spec:
         - --http-bind-port=8080
         - --https-bind-port=8443
         - --configmap=haproxy-ingress/haproxy-ingress
-        - --default-backend-service=haproxy-ingress/ingress-default-backend
-        - --default-ssl-certificate=haproxy-ingress/ingress-default-ssl-certificate
+        - --default-backend-service=haproxy-controller/ingress-default-backend
+        - --default-ssl-certificate=haproxy-controller/ingress-default-ssl-certificate
         - --log=trace
         securityContext:
           runAsUser:  1000
