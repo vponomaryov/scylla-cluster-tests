@@ -18,5 +18,9 @@ k8s_scylla_operator_upgrade_helm_repo: 'https://storage.googleapis.com/scylla-op
 k8s_scylla_operator_upgrade_chart_version: 'latest'  # never the same as above. Latest dev-version
 k8s_scylla_operator_upgrade_docker_image: ''  # default value from the Helm chart will be used
 
+# NOTE: make it be dynamic when operator-1.9 or newer becomes latest stable version
+k8s_local_volume_provisioner_type: 'static'
+k8s_scylla_disk_class: 'local-raid-disks'
+
 use_mgmt: false
 user_prefix: 'kubernetes-operator-upgrade'
