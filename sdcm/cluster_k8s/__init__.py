@@ -1819,7 +1819,7 @@ class BasePodContainer(cluster.BaseNode):  # pylint: disable=too-many-public-met
         return self.parent_cluster.k8s_cluster.params.get('k8s_scylla_datacenter')
 
     def start_journal_thread(self):
-        self._journal_thread = get_system_logging_thread(logs_transport="k8s_client",
+        self._journal_thread = get_system_logging_thread(logs_transport="kubectl",
                                                          node=self,
                                                          target_log_file=self.system_log)
         if self._journal_thread:
