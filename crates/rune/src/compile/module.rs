@@ -888,7 +888,7 @@ impl Module {
 
     /// Register an instance function.
     ///
-    /// # Examples
+    /// # Examples foo
     ///
     /// ```
     /// use std::sync::atomic::AtomicU32;
