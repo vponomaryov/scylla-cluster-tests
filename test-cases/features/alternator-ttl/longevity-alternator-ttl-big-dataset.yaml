@@ -1,42 +1,70 @@
-test_duration: 3000
+test_duration: 900
 
-# ( The prepare_write_cmd is just a dummy in order to trigger post_prepare_cql_cmds )
+# NOTE: 'prepare_write_cmd' option must always be defined to trigger the commands defined
+#       in the 'post_prepare_cql_cmds' config option.
 prepare_write_cmd:
+  # NOTE: Data to be used 'without' TTL feature for 'read' operations which will run in parallel
+  #       to the TTL'ed ones.
   - >-
-    bin/ycsb load dynamodb -P workloads/workloadc -threads 1 -p recordcount=11
-    -p fieldcount=8 -p fieldlength=64
-    -p insertstart=0 -p insertcount=10  -p table=usertable_no_lwt
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 288 -p recordcount=100020032
+    -p fieldcount=8 -p fieldlength=192 -p insertcount=25005008 -p table=usertable -p insertstart=0
+  - >-
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 288 -p recordcount=100020032
+    -p fieldcount=8 -p fieldlength=192 -p insertcount=25005008 -p table=usertable -p insertstart=25005008
+  - >-
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 288 -p recordcount=100020032
+    -p fieldcount=8 -p fieldlength=192 -p insertcount=25005008 -p table=usertable -p insertstart=50010016
+  - >-
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 288 -p recordcount=100020032
+    -p fieldcount=8 -p fieldlength=192 -p insertcount=25005008 -p table=usertable -p insertstart=75015024
 
-# YCSB write stress  2000200300 keys (1TB)
+# NOTE: maximum value for the 'insertcount' is '2147483647' (Integer in Java is 2^31, 32th bit is sign)
 stress_cmd:
+  # TTL'ed inserts
   - >-
-    bin/ycsb load dynamodb -P workloads/workloadc -threads 25 -p recordcount=8589934401
-    -p fieldcount=8 -p fieldlength=64
-    -p insertstart=0 -p insertcount=500050075  -p table=usertable_no_lwt -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=43200
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 84 -p recordcount=8101021532
+    -p fieldcount=8 -p fieldlength=192 -p insertstart=100020032 -p maxexecutiontime=43200
+    -p insertcount=2000250375 -p table=usertable -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=3720
+  - >-
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 84 -p recordcount=8101021532
+    -p fieldcount=8 -p fieldlength=192 -p insertstart=2100270407 -p maxexecutiontime=43200
+    -p insertcount=2000250375 -p table=usertable -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=3720
+  - >-
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 84 -p recordcount=8101021532
+    -p fieldcount=8 -p fieldlength=192 -p insertstart=4100520782 -p maxexecutiontime=43200
+    -p insertcount=2000250375 -p table=usertable -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=3720
+  - >-
+    bin/ycsb load dynamodb -P workloads/workloadc -threads 84 -p recordcount=8101021532
+    -p fieldcount=8 -p fieldlength=192 -p insertstart=6100771157 -p maxexecutiontime=43200
+    -p insertcount=2000250375 -p table=usertable -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=3720
 
+  # READs of the persistent records
   - >-
-    bin/ycsb load dynamodb -P workloads/workloadc -threads 25 -p recordcount=8589934401
-    -p fieldcount=8 -p fieldlength=64
-    -p insertstart=1000100150 -p insertcount=500050075 -p table=usertable_no_lwt -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=43200
-
+    bin/ycsb run dynamodb -P workloads/workloadc -threads 12 -p operationcount=200040064
+    -p fieldcount=8 -p fieldlength=192 -p recordcount=100020032 -p insertcount=25005008 -p insertstart=0
+    -p readproportion=1.0 -p dataintegrity=true -p maxexecutiontime=43200
   - >-
-    bin/ycsb load dynamodb -P workloads/workloadc -threads 25 -p recordcount=8589934401
-    -p fieldcount=8 -p fieldlength=64
-    -p insertstart=1500150225 -p insertcount=500050075  -p table=usertable_no_lwt -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=43200
-
+    bin/ycsb run dynamodb -P workloads/workloadc -threads 12 -p operationcount=200040064
+    -p fieldcount=8 -p fieldlength=192 -p recordcount=100020032 -p insertcount=25005008 -p insertstart=25005008
+    -p readproportion=1.0 -p dataintegrity=true -p maxexecutiontime=43200
   - >-
-    bin/ycsb load dynamodb -P workloads/workloadc -threads 25 -p recordcount=8589934401
-    -p fieldcount=8 -p fieldlength=64
-    -p insertstart=2000200300 -p insertcount=500050075 -p table=usertable_no_lwt -p dynamodb.ttlKey=ttl -p dynamodb.ttlDuration=43200
+    bin/ycsb run dynamodb -P workloads/workloadc -threads 12 -p operationcount=200040064
+    -p fieldcount=8 -p fieldlength=192 -p recordcount=100020032 -p insertcount=25005008 -p insertstart=50010016
+    -p readproportion=1.0 -p dataintegrity=true -p maxexecutiontime=43200
+  - >-
+    bin/ycsb run dynamodb -P workloads/workloadc -threads 12 -p operationcount=200040064
+    -p fieldcount=8 -p fieldlength=192 -p recordcount=100020032 -p insertcount=25005008 -p insertstart=75015024
+    -p readproportion=1.0 -p dataintegrity=true -p maxexecutiontime=43200
 
 round_robin: true
 
 dynamodb_primarykey_type: HASH_AND_RANGE
 
 n_loaders: 4
-instance_type_db: 'i4i.4xlarge'
+instance_type_loader: 'c6i.2xlarge'
+n_db_nodes: 5
+instance_type_db: 'i4i.12xlarge'
 n_monitor_nodes: 1
-n_db_nodes: 4
 
 nemesis_class_name: 'NoOpMonkey'
 nemesis_seed: '007'
@@ -63,11 +91,11 @@ authorizer: 'CassandraAuthorizer'
 # TTL mode is experimental in version 5.1.
 # Enable TTL feature in Scylla.
 # Set 'alternator_ttl_period_in_seconds' to 1 hour for the TTL scan interval.
-# gc_grace_seconds: 2 hours.
+# gc_grace_seconds: 3 hours.
 experimental_features:
   - alternator-ttl
 append_scylla_yaml:
   alternator_ttl_period_in_seconds: 3600
 
 
-post_prepare_cql_cmds: "ALTER TABLE alternator_usertable_no_lwt.usertable_no_lwt with gc_grace_seconds = 43200;"
+post_prepare_cql_cmds: "ALTER TABLE alternator_usertable.usertable with gc_grace_seconds = 10800;"
