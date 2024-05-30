@@ -1978,10 +1978,8 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                 install_debian_10_prereqs = dedent("""
                     export DEBIAN_FRONTEND=noninteractive
                     apt-get update
-                    apt-get install apt-transport-https -y
-                    apt-get install gnupg1-curl dirmngr -y
                     apt-get install software-properties-common -y
-                    apt-get install openjdk-11-jre -y
+                    apt-get install apt-transport-https gnupg1-curl dirmngr openjdk-11-jre -y
                 """)
                 self.remoter.run('sudo bash -cxe "%s"' % install_debian_10_prereqs)
 
