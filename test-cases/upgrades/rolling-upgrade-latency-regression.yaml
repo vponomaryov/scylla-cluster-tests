@@ -67,6 +67,10 @@ use_preinstalled_scylla: false
 
 scylla_d_overrides_files: [
   'scylla-qa-internal/custom_d1/workload1/scylla.d/cpuset.conf',
-  'scylla-qa-internal/custom_d1/workload1/scylla.d/io.conf',
+  'scylla-qa-internal/custom_d1/workload1/scylla.d/2021.1/io.conf',
   'scylla-qa-internal/custom_d1/workload1/scylla.d/io_properties.yaml',
 ]
+
+append_scylla_yaml:
+  consistent_cluster_management: true
+  force_schema_commit_log: true
