@@ -1,5 +1,5 @@
 FROM rust:1.79-buster AS builder
-RUN cargo install --git https://github.com/scylladb/latte --branch main
+RUN cargo install --git https://github.com/scylladb/latte --branch dev
 
 FROM debian:buster-slim
 # NOTE: 'libfontconfig openssl' libs are required by the 'latte' binary during execution

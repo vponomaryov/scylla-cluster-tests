@@ -7,48 +7,63 @@ simulated_regions: 2
 prepare_write_cmd:
   # NOTE: --duration in these commands is number of rows that will be written.
   #       Time gets specified with 's', 'm' or 'h' letters.
+  # NOTE: 'rows_per_partition' and 'partition_sizes' parameters will be effective only to
+  #       the T1, T5, T7, T13 and T14 tables.
+  # T14 - mean bytes: 692 , min bytes: 36 , max bytes: 43388628
+  # T13 - mean bytes: 1820 , min bytes: 43 , max bytes: 17436917 , 5500 live rows per partition
+  # T1 - mean bytes: 443, min bytes: 36 , max bytes: 186563160
+  # T5 - mean bytes: 221 , min bytes: 51 , max bytes: 3379391
+  # T7 - mean bytes: 289 , min bytes: 51 , max bytes: 10090808
   - >-
     latte run --tag latte --duration 75100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 19000 -P offset=0
     --function custom -P codes="\"T2F1,T14F1\"" -P row_count=75100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   - >-
     latte run --tag latte --duration 75100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 19000 -P offset=75100100
     --function custom -P codes="\"T2F1,T14F1\"" -P row_count=75100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
 
   - >-
     latte run --tag latte --duration 35100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 8900 -P offset=0
     --function custom -P codes="\"T13F1\"" -P row_count=35100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   - >-
     latte run --tag latte --duration 35100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 8900 -P offset=35100100
     --function custom -P codes="\"T13F1\"" -P row_count=35100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
 
   - >-
     latte run --tag latte --duration 25100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 6350 -P offset=0
     --function custom -P codes="\"T1F1,T3F1,T6F1,T9F1\"" -P row_count=25100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:8,50:18,20:24,3:48,1.989:120,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   - >-
     latte run --tag latte --duration 25100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 6350 -P offset=25100100
     --function custom -P codes="\"T1F1,T3F1,T6F1,T9F1\"" -P row_count=25100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:8,50:18,20:24,3:48,1.989:120,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
 
   - >-
     latte run --tag latte --duration 5100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 1280 -P offset=0
     --function custom -P codes="\"T4F1,T5F1,T7F1\"" -P row_count=5100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:6,50:12,20:15,3:30,1.989:90,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   - >-
     latte run --tag latte --duration 5100100 --request-timeout 60 --retry-interval '2s,10s'
     --sampling 5s --threads 30 --connections 3 --concurrency 180 --rate 1280 -P offset=5100100
     --function custom -P codes="\"T4F1,T5F1,T7F1\"" -P row_count=5100100
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:6,50:12,20:15,3:30,1.989:90,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
 
 stress_cmd:
@@ -72,6 +87,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 120 --rate 17435
     --function custom -P row_count=75100100
     -P print_applied_func_names=2 -P codes="\"T14F1\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 04) T14F1 -> -r 17435 (~1/2 from  34869) INSERT - part2
   - >-
@@ -79,6 +95,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 120 --rate 17435
     --function custom -P row_count=75100100 -P offset=75100100
     -P print_applied_func_names=2 -P codes="\"T14F1\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 05) T2F1  -> -r 15396 (~1/2 from  30392) INSERT - part1
   - >-
@@ -100,6 +117,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 150 --rate 12223
     --function custom -P row_count=75100100
     -P print_applied_func_names=2 -P codes="\"T14F3\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 08) T14F3 -> -r 12223 (~1/2 from  24445) SELECT - part2
   - >-
@@ -107,6 +125,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 150 --rate 12223
     --function custom -P row_count=75100100 -P offset=75100100
     -P print_applied_func_names=2 -P codes="\"T14F3\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 09) T13F1 -> -r  8054 (~1/2 from  16107) INSERT - part1
   - >-
@@ -114,6 +133,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 120 --rate 8054
     --function custom -P row_count=35100100
     -P print_applied_func_names=2 -P codes="\"T13F1\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 10) T13F1 -> -r  8054 (~1/2 from  16107) INSERT - part2
   - >-
@@ -121,6 +141,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 120 --rate 8054
     --function custom -P row_count=35100100 -P offset=35100100
     -P print_applied_func_names=2 -P codes="\"T13F1\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 11) T14F6 -> -r  9401 | SELECT
   - >-
@@ -128,6 +149,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 150 --rate 9401
     --function custom -P row_count=75100100
     -P print_applied_func_names=2 -P codes="\"T14F6\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 12) T13F4 -> -r  8703 | SELECT
   - >-
@@ -135,6 +157,7 @@ stress_cmd:
     --sampling 5s --threads 30 --connections 3 --concurrency 150 --rate 8703
     --function custom -P row_count=35100100
     -P print_applied_func_names=2 -P codes="\"T13F4\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 13) T3F2  -> -r  4168 | SELECT
   - >-
@@ -156,6 +179,7 @@ stress_cmd:
     --sampling 5s --threads 10 --connections 3 --concurrency 100 --rate 1149
     --function custom -P row_count=25100100
     -P print_applied_func_names=2 -P codes="\"T1F4\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:8,50:18,20:24,3:48,1.989:120,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 16) T6F2  -> -r   778 | SELECT
   - >-
@@ -170,6 +194,7 @@ stress_cmd:
     --sampling 5s --threads 5 --connections 3 --concurrency 70 --rate 315
     --function custom -P row_count=25100100
     -P print_applied_func_names=2 -P codes="\"T1F3\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:8,50:18,20:24,3:48,1.989:120,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 18) T7F2  -> -r   314 | SELECT
   - >-
@@ -177,6 +202,7 @@ stress_cmd:
     --sampling 5s --threads 5 --connections 3 --concurrency 70 --rate 314
     --function custom -P row_count=5100100
     -P print_applied_func_names=2 -P codes="\"T7F2\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:6,50:12,20:15,3:30,1.989:90,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 19) T13F5 -> -r   209 | SELECT
   - >-
@@ -184,6 +210,7 @@ stress_cmd:
     --sampling 5s --threads 3 --connections 2 --concurrency 70 --rate 209
     --function custom -P row_count=35100100
     -P print_applied_func_names=2 -P codes="\"T13F5\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 20) T5F2  -> -r   198 | SELECT
   - >-
@@ -191,6 +218,7 @@ stress_cmd:
     --sampling 5s --threads 3 --connections 2 --concurrency 70 --rate 198
     --function custom -P row_count=5100100
     -P print_applied_func_names=2 -P codes="\"T5F2\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:6,50:12,20:15,3:30,1.989:90,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 21) T14F5 -> -r   156 | SELECT
   - >-
@@ -198,6 +226,7 @@ stress_cmd:
     --sampling 5s --threads 2 --connections 2 --concurrency 40 --rate 156
     --function custom -P row_count=75100100
     -P print_applied_func_names=2 -P codes="\"T14F5\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 22) T3F3  -> -r   121 | SELECT
   - >-
@@ -212,6 +241,7 @@ stress_cmd:
     --sampling 5s --threads 2 --connections 2 --concurrency 40 --rate 119
     --function custom -P row_count=75100100
     -P print_applied_func_names=2 -P codes="\"T14F4\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 24) T7F3  -> -r    78 | SELECT
   - >-
@@ -219,6 +249,7 @@ stress_cmd:
     --sampling 5s --threads 2 --connections 2 --concurrency 40 --rate 78
     --function custom -P row_count=5100100
     -P print_applied_func_names=2 -P codes="\"T7F3\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:6,50:12,20:15,3:30,1.989:90,0.01:1000,0.001:2000,0.0005:4000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 25) T13F3 -> -r    40 | SELECT COUNT(*)
   - >-
@@ -226,6 +257,7 @@ stress_cmd:
     --sampling 5s --threads 1 --connections 2 --concurrency 20 --rate 40
     --function custom -P row_count=35100100
     -P print_applied_func_names=2 -P codes="\"T13F3\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:7,20:8,3:10,1.989:20,0.01:1000,0.001:2000,0.0005:5500\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 26) T4F2  -> -r    20 | SELECT
   - >-
@@ -240,6 +272,7 @@ stress_cmd:
     --sampling 5s --threads 10 --connections 3 --concurrency 90 --rate 500
     --function custom -P row_count=1000000 -P offset=150100100 -P print_applied_func_names=2
     -P codes="\"T14F8\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
   # 28) T14F9  -> deletion scenario 2 - by many
   - >-
@@ -247,6 +280,7 @@ stress_cmd:
     --sampling 5s --threads 10 --connections 3 --concurrency 90 --rate 1000
     --function custom -P row_count=1000000 -P offset=150100100 -P print_applied_func_names=2
     -P codes="\"T14F9\""
+    -P rows_per_partition=1 -P partition_sizes="\"5:2,20:3,50:5,20:6,3:10,1.989:20,0.01:1000,0.001:2000\""
     scylla-qa-internal/custom_d1/workload2/latte/custom_d1_workload2.rn
 round_robin: true
 
