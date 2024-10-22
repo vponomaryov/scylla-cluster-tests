@@ -381,6 +381,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
 
     # pylint: disable=too-many-arguments
     def add_nodes(self, count, ec2_user_data='', dc_idx=0, rack=0, enable_auto_bootstrap=False, instance_type=None):
+        self.log.info('DEBUG1: dc_idx = %s, rack = %s', dc_idx, rack)
         if not count:
             return []
         ec2_user_data = self.prepare_user_data(enable_auto_bootstrap=enable_auto_bootstrap)
@@ -420,6 +421,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
 
     def _create_node(self, instance, ami_username, node_prefix, node_index,  # pylint: disable=too-many-arguments
                      base_logdir, dc_idx, rack):
+        self.log.info('DEBUG2: dc_idx = %s, rack = %s', dc_idx, rack)
         ec2_service = self._ec2_services[0 if self.params.get("simulated_regions") else dc_idx]
         credentials = self._credentials[0 if self.params.get("simulated_regions") else dc_idx]
         node = AWSNode(ec2_instance=instance, ec2_service=ec2_service,
@@ -463,8 +465,10 @@ class AWSNode(cluster.BaseNode):
         else:
             node_private_ip = self.private_ip_address
 
-        return 'Node %s [%s | %s%s]%s' % (
+        return 'Node %s [dc_idx: %s , vm_region: %s][%s | %s%s]%s' % (
             self.name,
+            self.dc_idx,
+            self.vm_region,
             self.public_ip_address,
             node_private_ip,
             " | %s" % self.ipv6_ip_address if self.test_config.IP_SSH_CONNECTIONS == "ipv6" else "",
@@ -542,6 +546,7 @@ class AWSNode(cluster.BaseNode):
 
     @property
     def vm_region(self):
+        # return self.parent_cluster.region_names[self.dc_idx]
         return self._ec2_service.meta.client.meta.region_name
 
     def _set_hostname(self) -> bool:
@@ -896,6 +901,7 @@ class ScyllaAWSCluster(cluster.BaseScyllaCluster, AWSCluster):
 
     # pylint: disable=too-many-arguments
     def add_nodes(self, count, ec2_user_data='', dc_idx=0, rack=0, enable_auto_bootstrap=False, instance_type=None):
+        self.log.info('DEBUG3: dc_idx = %s, rack = %s', dc_idx, rack)
         if not ec2_user_data:
             if self._ec2_user_data and isinstance(self._ec2_user_data, str):
                 ec2_user_data = re.sub(r'(--totalnodes\s)(\d*)(\s)',
