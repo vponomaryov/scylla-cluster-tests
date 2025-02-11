@@ -41,8 +41,12 @@ const COLUMN_SIZE = latte::param!("column_size", 128);
 const COLUMN_COUNT = latte::param!("column_count", 8);
 const ROW_COUNT = latte::param!("row_count", 1_000_000);
 const OFFSET = latte::param!("offset", 0);
+
 const GAUSS_MEAN = latte::param!("gauss_mean", 0);
 const GAUSS_STDDEV = latte::param!("gauss_stddev", 0);
+
+const ZIPF_SKEW = latte::param!("zipf_skew", 0.0);
+const ZIPF_SEED = latte::param!("zipf_seed", 0);
 
 const P_STMT_WRITE = "latte_prep_stmt___write";
 const P_STMT_READ = "latte_prep_stmt__read";
@@ -109,7 +113,8 @@ pub async fn prepare(db) {
     ).await?;
     db.prepare(P_STMT_READ, `SELECT * FROM ${KEYSPACE}.${TABLE} WHERE key = :key`).await?;
 
-    prepare_gauss_distribution(db).await
+    prepare_gauss_distribution(db).await;
+    prepare_zipf_distribution(db).await;
 }
 
 ///////////////////////
@@ -136,6 +141,21 @@ async fn prepare_gauss_distribution(db) {
     }
 }
 
+/// Utility function that enables and validates the zipf distribution
+async fn prepare_zipf_distribution(db) {
+    if ZIPF_SKEW > 0.0 {
+        db.data.zipf_enabled = true;
+        let preset_name = "zipf";
+        db.init_zipf_preset(preset_name, ZIPF_SEED, ROW_COUNT, ZIPF_SKEW).await;
+        println!(
+            "debug: Zipf distribution is enabled (preset_name='{name}'): skew='{skew}', seed='{seed}'",
+            name=preset_name, skew=ZIPF_SKEW, seed=ZIPF_SEED)
+    } else {
+        db.data.zipf_enabled = false;
+        println!("debug: Zipf distribution is disabled");
+    }
+}
+
 /// Utility function which generates partition index based on the cycle id and distribution type
 async fn get_partition_idx(db, i) {
     if db.data.gauss_enabled {
@@ -146,6 +166,8 @@ async fn get_partition_idx(db, i) {
             current_idx = OFFSET;
         }
         return current_idx;
+    } else if db.data.zipf_enabled {
+        return db.get_zipf_partition_idx("zipf").await + OFFSET;
     } else {
         return i % ROW_COUNT + OFFSET;
     }
