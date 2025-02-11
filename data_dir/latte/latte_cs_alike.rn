@@ -167,7 +167,11 @@ async fn get_partition_idx(db, i) {
         }
         return current_idx;
     } else if db.data.zipf_enabled {
-        return db.get_zipf_partition_idx("zipf").await + OFFSET;
+        let use_local_rng = true; // fastest, non-deterministic
+        let use_seed_for_std_rng = false; // seed the std rng or not. Used when 'use_local_rng=false'
+        let current_idx = db.get_zipf_partition_idx("zipf", use_local_rng, use_seed_for_std_rng).await + OFFSET;
+        // println!("current_idx='{current_idx}'", current_idx=current_idx);
+        return current_idx;
     } else {
         return i % ROW_COUNT + OFFSET;
     }
