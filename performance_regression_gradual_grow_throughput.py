@@ -231,11 +231,13 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
 
         for throttle_step in workload.throttle_steps:
             self.log.info("Run cs command with rate: %s Kops", throttle_step)
-            current_throttle = f"fixed={int(int(throttle_step) // (num_loaders * stress_num))}/s" if throttle_step != "unthrottled" else ""
+            current_num_threads = int(throttle_step.replace("unthrottled_", ""))
+            current_throttle = f"fixed={int(int(throttle_step) // (num_loaders * stress_num))}/s" \
+                if not throttle_step.startswith("unthrottled") else ""
             run_step = ((latency_calculator_decorator(legend=f"Gradual test step {throttle_step} op/s",
                                                       cycle_name=throttle_step))(self.run_step))
             results, _ = run_step(stress_cmds=workload.cs_cmd_tmpl, current_throttle=current_throttle,
-                                  num_threads=workload.num_threads, step_duration=workload.step_duration)
+                                  num_threads=current_num_threads, step_duration=workload.step_duration)
 
             calculate_result = self._calculate_average_max_latency(results)
             self.update_test_details(scylla_conf=True)
