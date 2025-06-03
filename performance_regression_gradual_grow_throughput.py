@@ -209,6 +209,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
             self.log.debug('collected latency values are: %s', latency_results)
             self.update({"latency_during_ops": latency_results})
             return latency_results
+        return {}
 
     def run_step(self, stress_cmds, current_throttle, num_threads, step_duration):
         results = []
@@ -247,7 +248,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
             self.create_test_stats(sub_type=workload.workload_type, doc_id_with_timestamp=True)
         total_summary = {}
 
-        for throttle_step in workload.throttle_steps:
+        for num, throttle_step in enumerate(workload.throttle_steps):
             self.log.info("Run cs command with rate: %s Kops", throttle_step)
             if throttle_step.startswith("unthrottled"):
                 current_throttle = ""
@@ -259,16 +260,16 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
                     current_throttle = f"--rate={throttle_value}"
                 else:
                     current_throttle = f"fixed={throttle_value}/s"
-
-            run_step = ((latency_calculator_decorator(legend=f"Gradual test step {throttle_step} op/s",
-                                                      cycle_name=throttle_step))(self.run_step))
+            current_throttle_step = f"{throttle_step}_{num}"
+            run_step = ((latency_calculator_decorator(legend=f"Gradual test step {current_throttle_step} op/s",
+                                                      cycle_name=current_throttle_step))(self.run_step))
             results, _ = run_step(stress_cmds=workload.cs_cmd_tmpl, current_throttle=current_throttle,
                                   num_threads=current_num_threads, step_duration=workload.step_duration)
 
             calculate_result = self._calculate_average_max_latency(results)
             self.update_test_details(scylla_conf=True)
-            summary_result = self.check_latency_during_steps(step=throttle_step)
-            summary_result[throttle_step].update({"ops_rate": calculate_result["op rate"] * num_loaders})
+            summary_result = self.check_latency_during_steps(step=current_throttle_step)
+            summary_result[current_throttle_step].update({"ops_rate": calculate_result["op rate"] * num_loaders})
             total_summary.update(summary_result)
             if workload.drop_keyspace:
                 self.drop_keyspace()
