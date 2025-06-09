@@ -26,7 +26,7 @@ class Workload(NamedTuple):
     workload_type: str
     cs_cmd_tmpl: list
     cs_cmd_warm_up: list | None
-    num_threads: list(int)
+    num_threads: list
     throttle_steps: list
     preload_data: bool
     drop_keyspace: bool
@@ -209,7 +209,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
             self.log.debug('collected latency values are: %s', latency_results)
             self.update({"latency_during_ops": latency_results})
             return latency_results
-        return {}
+        return {step: {"step": step, "legend": "", "cycles": []}}
 
     def run_step(self, stress_cmds, current_throttle, num_threads, step_duration):
         results = []
@@ -238,6 +238,20 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
             session.execute(f'DROP KEYSPACE IF EXISTS {"keyspace1"};')
 
     @staticmethod
+    def _step_names(step_names, total_counts):
+        """
+        Helper function to generate names based on throttle_steps and num_threads.
+        """
+        step_seen = {}
+        result = []
+        for name in step_names:
+            step_seen[name] = step_seen.get(name, 0) + 1
+            if total_counts[name] > 1:
+                result.append(f"{name}_{step_seen[name]}")
+            else:
+                result.append(name)
+        return result
+
     def get_sequential_throttle_steps(self, workload: Workload):
         """
         Returns a list of throttle step names based on throttle_steps and num_threads.
@@ -245,38 +259,19 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
         - If num_threads are unique per step, use '<throttle_step>_<num_threads>_threads'.
           If this combination repeats, append a count.
         """
-        def _step_names():
-            """
-            Helper function to generate names based on throttle_steps and num_threads.
-            """
-            step_seen = {}
-            result = []
-            for name in step_names:
-                step_seen[name] = step_seen.get(name, 0) + 1
-                if total_counts[name] > 1:
-                    result.append(f"{name}_{step_seen[name]}")
-                else:
-                    result.append(name)
-            return result
-
         throttle_steps = workload.throttle_steps
         num_threads = workload.num_threads
 
         if len(set(num_threads)) == 1:
             # All thread counts are the same, only add count for repeated steps
             step_names = throttle_steps
-
-        elif len(set(num_threads)) == len(throttle_steps):
-            # Each step has a unique thread count, use <throttle_step>_<num_threads>_threads
-            step_names = [f"{step}_{threads}_threads" for step, threads in zip(throttle_steps, num_threads)]
-
         else:
-            # Fallback: combine both step and thread count, add count if repeated
+            # Each step has a unique thread count, use <throttle_step>_<num_threads>_threads
             step_names = [f"{step}_{threads}_threads" for step, threads in zip(throttle_steps, num_threads)]
 
         total_counts = Counter(step_names)
 
-        return _step_names()
+        return self._step_names(step_names, total_counts)
 
     @staticmethod
     def update_num_threads_for_steps(workload: Workload):
@@ -300,6 +295,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
         workload = self.update_num_threads_for_steps(workload=workload)
 
         if workload.cs_cmd_warm_up is not None:
+            # Use the maximum thread count for warmup to ensure the cache is warmed up with the highest level of concurrency
             self.warmup_cache(workload.cs_cmd_warm_up, max(workload.num_threads))
             # Wait for 4 minutes after warmup to let for all background processes to finish
             time.sleep(240)
@@ -312,7 +308,8 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
         # for num, throttle_step in enumerate(workload.throttle_steps):
         sequential_steps = self.get_sequential_throttle_steps(workload)
         for throttle_step, num_threads, current_throttle_step in zip(workload.throttle_steps, workload.num_threads, sequential_steps):
-            self.log.info("Run cs command with rate: %s Kops", throttle_step)
+            self.log.info("Run cs command with rate: %s Kops; threads: %s; step name: %s", throttle_step, num_threads,
+                          current_throttle_step)
             if throttle_step == "unthrottled":
                 current_throttle = ""
             else:
