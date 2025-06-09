@@ -1299,7 +1299,7 @@ class SCTConfiguration(dict):
 
         dict(name="perf_gradual_threads", env="SCT_PERF_GRADUAL_THREADS", type=dict_or_str,
              help="Threads amount of c-s load for gradual performance test per sub-test. "
-                  "Example: {'read': 100, 'write': 200, 'mixed': 300}"),
+                  "Example: {'read': [100], 'write': [200], 'mixed': [300]}"),
         dict(name="perf_gradual_throttle_steps", env="SCT_PERF_GRADUAL_THROTTLE_STEPS", type=dict_or_str,
              help="Used for gradual performance test. Define throttle for load step in ops. Example: {'read': ['100000', '150000'], 'mixed': ['300']}"),
 
