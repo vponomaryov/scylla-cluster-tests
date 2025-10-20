@@ -93,10 +93,10 @@ pub async fn schema(db) {
     ).await?;
 
     // Create counter table
-    db.execute(
-        `CREATE TABLE IF NOT EXISTS ${KEYSPACE}.${COUNTER_TABLE}` +
-        `(key blob PRIMARY KEY${counter_columns_def}${compression}${compaction}${comment}`
-    ).await?;
+    // db.execute(
+    //     `CREATE TABLE IF NOT EXISTS ${KEYSPACE}.${COUNTER_TABLE}` +
+    //     `(key blob PRIMARY KEY${counter_columns_def}${compression}${compaction}${comment}`
+    // ).await?;
 }
 
 pub async fn erase(db) {
@@ -130,13 +130,13 @@ pub async fn prepare(db) {
     ).await?;
     db.prepare(P_STMT_READ, `SELECT * FROM ${KEYSPACE}.${TABLE} WHERE key = :key`).await?;
 
-    db.prepare(
-        P_STMT_COUNTER_WRITE,
-        `UPDATE ${KEYSPACE}.${COUNTER_TABLE}` +
-        ` SET ${counter_columns}` +
-        " WHERE key = :key"
-    ).await?;
-    db.prepare(P_STMT_COUNTER_READ, `SELECT * FROM ${KEYSPACE}.${COUNTER_TABLE} WHERE key = :key`).await?;
+    // db.prepare(
+    //     P_STMT_COUNTER_WRITE,
+    //     `UPDATE ${KEYSPACE}.${COUNTER_TABLE}` +
+    //     ` SET ${counter_columns}` +
+    //     " WHERE key = :key"
+    // ).await?;
+    // db.prepare(P_STMT_COUNTER_READ, `SELECT * FROM ${KEYSPACE}.${COUNTER_TABLE} WHERE key = :key`).await?;
 
     prepare_gauss_distribution(db).await
 }
