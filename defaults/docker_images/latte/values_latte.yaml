@@ -1,2 +1,2 @@
 latte:
-  image: scylladb/latte:0.42.1-scylladb
+  image: vponomarovatscylladb/hydra-loaders:0.42.1-scylladb--fns-to-invoke

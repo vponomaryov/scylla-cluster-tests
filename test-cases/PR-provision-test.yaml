@@ -1,29 +1,77 @@
-test_duration: 60
-data_validation: |
-  validate_partitions: false
-  table_name: "scylla_bench.test"
-  primary_key_column: "pk"
-  max_partitions_in_test_table: 10
-  partition_range_with_data_validation: 0-10
+test_duration: 300
 
-stress_cmd: ["cassandra-stress write cl=QUORUM duration=1m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=1000 -pop seq=1..10000000 -log interval=5",
-             ]
-
-prepare_write_cmd:  ["scylla-bench -workload=sequential -mode=write -max-rate=300 -replication-factor=3 -partition-count=10 -clustering-row-count=100 -clustering-row-size=5120 -concurrency=7 -rows-per-request=10",
-                     "scylla-bench -workload=uniform -mode=read -replication-factor=3 -partition-count=10 -clustering-row-count=100 -clustering-row-size=5120 -rows-per-request=10 -concurrency=7 -max-rate=32000 -duration=1m"
-                    ]
+n_db_nodes: 3
+instance_type_db: 'i4i.4xlarge'
 
 n_loaders: 1
-instance_type_db: 'i4i.large'
-# testing the force iotune feature
-force_run_iotune: true
-n_db_nodes: 3
+instance_type_loader: 'c6i.8xlarge'
 
-nemesis_class_name: SisyphusMonkey
+root_disk_size_monitor: 120
+root_disk_size_runner: 120
+
+# nemesis_class_name: SisyphusMonkey
+nemesis_class_name: "NoOpMonkey"
 nemesis_selector: "not disruptive"
-nemesis_interval: 1
+nemesis_seed: '777'
+nemesis_interval: 5
 
-user_prefix: 'PR-provision-test'
-instance_provision: 'spot'
+user_prefix: 'schema-scale-dbg'
+cluster_health_check: true
 
 use_preinstalled_scylla: true
+
+append_scylla_yaml:
+  # NOTE: https://github.com/scylladb/scylla-monitoring/issues/2429
+  enable_node_aggregated_table_metrics: false
+
+round_robin: true
+prepare_write_cmd:
+  - >-
+    latte run --tag create-schema -f create_table
+    --threads=1 --concurrency=128 --connections=1
+    --warmup=0 --retries=5 --retry-interval=10s --request-timeout 300 --sampling 1s
+    -d 4000
+    -P keyspace_count=4
+    -P table_count_per_keyspace=1000
+    -P enable_tablets=false
+    -P create_index=false
+    -P replication_factor=3
+    -P compaction_strategy="\"IncrementalCompactionStrategy\""
+    -P sstable_compression="\"LZ4Compressor\""
+    data_dir/latte/schema-scale.rn
+  - >-
+    latte run --tag populate-data -f write
+    --threads=28 --concurrency=64 --connections=1
+    --warmup=0 --retries=5 --retry-interval=1s,3s --request-timeout 30 --sampling 5s
+    -d 800000000
+    -P keyspace_count=4
+    -P table_count_per_keyspace=1000
+    -P data_validation=false
+    -P row_count_per_table=200000
+    -P blob_col_size=128
+    -P text_col_size=128
+    -P gauss_mean=0
+    -P gauss_stddev=0
+    -P table_group_size=4000
+    -P table_shift_count=0
+    -P table_shift_interval_s=0
+    data_dir/latte/schema-scale.rn
+
+stress_cmd:
+  - >-
+    latte run --tag mixed -f write:1 -f read:5
+    --threads=28 --concurrency=64 --connections=1
+    --warmup=0 --retries=5 --retry-interval=1s,3s --request-timeout 30 --sampling 5s
+    -d 4000s
+    -P keyspace_count=4
+    -P table_count_per_keyspace=1000
+    -P data_validation=true
+    -P row_count_per_table=200000
+    -P blob_col_size=128
+    -P text_col_size=128
+    -P gauss_mean=100000
+    -P gauss_stddev=20000
+    -P table_group_size=4000
+    -P table_shift_count=2
+    -P table_shift_interval_s=2
+    data_dir/latte/schema-scale.rn
