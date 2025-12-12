@@ -33,7 +33,7 @@ prepare_write_cmd:
     -d 5000
     -P keyspace_count=1
     -P table_count_per_keyspace=5000
-    -P enable_tablets=true
+    -P enable_tablets=false
     -P create_index=false
     -P replication_factor=3
     -P compaction_strategy="\"IncrementalCompactionStrategy\""
