@@ -23,7 +23,7 @@ endpoint_snitch: GossipingPropertyFileSnitch
 region_aware_loader: true
 # NOTE: enable rack awareness when following issue gets fixed:
 # - https://github.com/scylladb/scylla-rust-driver/issues/1425
-rack_aware_loader: false
+rack_aware_loader: true
 
 prepare_wait_no_compactions_timeout: 60 # (minutes)
 num_nodes_to_rollback: 2   # max is n_db_nodes -1
@@ -34,7 +34,8 @@ nemesis_class_name: 'NoOpMonkey'
 nemesis_during_prepare: false
 use_mgmt: false
 
-client_encrypt: true
+# TODO: uncomment after https://scylladb.atlassian.net/browse/SCT-107 gets resolved
+client_encrypt: false
 internode_compression: 'all'
 server_encrypt: true
 authenticator: 'PasswordAuthenticator'
