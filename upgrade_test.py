@@ -1189,6 +1189,10 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
 
         InfoEvent(message="Step2 - Run 'read' command before upgrade").publish()
         step = itertools_count(start=1)
+        # NOTE: reset the loaders round robin state to remove effects from stage to stage
+        #       It is required for running DC-specific stress commands from proper loaders
+        #       located in specific DCs.
+        self.loaders._loader_cycle = None
         stress_before_upgrade_thread_pools = self._run_stress_workload(
             "stress_before_upgrade",
             wait_for_finish=False,
@@ -1224,6 +1228,7 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             )
         argus_results.submit_results_to_argus(argus_client=self.test_config.argus_client(), result_table=result_table)
 
+        self.loaders._loader_cycle = None
         stress_during_entire_upgrade_thread_pools = self._run_stress_workload(
             "stress_during_entire_upgrade",
             wait_for_finish=False,
@@ -1261,6 +1266,7 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
         self.wait_no_compactions_running(n=240, sleep_time=30)
 
         InfoEvent(message="Step6 - run 'stress_after_cluster_upgrade' stress command(s)").publish()
+        self.loaders._loader_cycle = None
         time.sleep(60)
         stress_after_upgrade_thread_pools = self._run_stress_workload(
             "stress_after_cluster_upgrade",
