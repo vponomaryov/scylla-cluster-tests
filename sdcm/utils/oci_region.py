@@ -22,36 +22,41 @@ layer automation on top of these primitives.
 from __future__ import annotations
 
 import logging
+import time
 from ipaddress import ip_network
 from functools import cached_property
 from typing import Optional
 
 import oci
 from oci.core.models import (
+    AddNetworkSecurityGroupSecurityRulesDetails,
+    AddSecurityRuleDetails,
+    CreateInternetGatewayDetails,
+    CreateNatGatewayDetails,
+    CreateNetworkSecurityGroupDetails,
+    CreateRouteTableDetails,
+    CreateSecurityListDetails,
     CreateSubnetDetails,
     CreateVcnDetails,
-    CreateSecurityListDetails,
-    CreateInternetGatewayDetails,
-    UpdateRouteTableDetails,
-    RouteRule,
     EgressSecurityRule,
     IngressSecurityRule,
     PortRange,
+    RouteRule,
     TcpOptions,
+    UpdateRouteTableDetails,
 )
 from oci.identity.models import (
-    CreateTagNamespaceDetails,
     CreateTagDetails,
+    CreateTagNamespaceDetails,
 )
 
+from sdcm.provision.security import ScyllaOpenPorts
 from sdcm.utils.get_username import get_username
+from sdcm.utils.lock_utils import KeyBasedLock
 from sdcm.utils.oci_utils import (
+    OciService,
     SUPPORTED_REGIONS,
     get_availability_domains,
-    get_oci_compartment_id,
-    get_oci_compute_client,
-    get_oci_identity_client,
-    get_oci_network_client,
 )
 
 # Tag namespace and keys used by SCT on OCI
@@ -74,7 +79,7 @@ SCT_TAG_KEYS = [
     "version",
 ]
 
-
+KEY_BASED_LOCKS = KeyBasedLock()
 LOGGER = logging.getLogger(__name__)
 
 
@@ -89,14 +94,33 @@ class OciRegion:
 
     def __init__(self, region_name: str):
         self.region_name = region_name
-        self.compute_client, self._config = get_oci_compute_client(region=region_name)
-        self.network_client, _ = get_oci_network_client(region=region_name)
-        self.identity_client, _ = get_oci_identity_client(region=region_name)
-        self.compartment_id = get_oci_compartment_id()
-
         region_index = self._region_index()
         self.vcn_ipv4_cidr = ip_network(self.SCT_VCN_CIDR_TMPL.format(region_index))
         self._vcn_ipv6_cidr = None
+
+    @cached_property
+    def _config(self):
+        return self.oci_service.config
+
+    @cached_property
+    def oci_service(self) -> OciService:
+        return OciService()
+
+    @cached_property
+    def compartment_id(self) -> str:
+        return self.oci_service.compartment_id
+
+    @cached_property
+    def compute(self):
+        return self.oci_service.get_compute_client(self.region_name)
+
+    @cached_property
+    def identity(self):
+        return self.oci_service.get_identity_client(self.region_name)
+
+    @cached_property
+    def network(self):
+        return self.oci_service.get_network_client(self.region_name)
 
     def _region_index(self) -> int:
         if self.region_name not in SUPPORTED_REGIONS:
@@ -116,7 +140,7 @@ class OciRegion:
         return self._create_vcn()
 
     def _find_vcn(self):
-        vcns = self.network_client.list_vcns(compartment_id=self.compartment_id, display_name=self.SCT_VCN_NAME).data
+        vcns = self.network.list_vcns(compartment_id=self.compartment_id, display_name=self.SCT_VCN_NAME).data
         for vcn in vcns:
             if vcn.lifecycle_state == "AVAILABLE":
                 return vcn
@@ -132,8 +156,8 @@ class OciRegion:
             freeform_tags=self._base_tags(self.SCT_VCN_NAME),
             is_ipv6_enabled=True,
         )
-        response = self.network_client.create_vcn(details)
-        vcn = self._wait_for_state(self.network_client, self.network_client.get_vcn, response.data.id, "AVAILABLE")
+        response = self.network.create_vcn(details)
+        vcn = self._wait_for_state(self.network, self.network.get_vcn, response.data.id, "AVAILABLE")
         self._cache_vcn_ipv6_cidr(vcn)
         return vcn
 
@@ -148,18 +172,23 @@ class OciRegion:
 
     @cached_property
     def security_list(self):
-        existing = self._find_security_list()
-        if existing:
-            return existing
-        return self._create_security_list()
+        with KEY_BASED_LOCKS.get_lock("oci--security-list"):
+            existing = self._find_security_list()
+            if existing:
+                return existing
+            return self._create_security_list()
 
     def _find_security_list(self):
-        lists = self.network_client.list_security_lists(
-            compartment_id=self.compartment_id, vcn_id=self.vcn.id, display_name=self.SCT_SECURITY_LIST_NAME
-        ).data
-        for sec_list in lists:
-            if sec_list.lifecycle_state == "AVAILABLE":
-                return sec_list
+        sec_lists = oci.pagination.list_call_get_all_results_generator(
+            self.network.list_security_lists,
+            yield_mode="record",
+            compartment_id=self.compartment_id,
+            vcn_id=self.vcn.id,
+            display_name=self.SCT_SECURITY_LIST_NAME,
+        )
+        while current_sec_list := next(sec_lists, None):
+            if current_sec_list.lifecycle_state == "AVAILABLE":
+                return current_sec_list
         return None
 
     def _create_security_list(self):
@@ -217,10 +246,8 @@ class OciRegion:
             egress_security_rules=egress_rules,
             freeform_tags=self._base_tags(self.SCT_SECURITY_LIST_NAME),
         )
-        response = self.network_client.create_security_list(details)
-        return self._wait_for_state(
-            self.network_client, self.network_client.get_security_list, response.data.id, "AVAILABLE"
-        )
+        response = self.network.create_security_list(details)
+        return self._wait_for_state(self.network, self.network.get_security_list, response.data.id, "AVAILABLE")
 
     @property
     def vcn_ipv6_cidr(self):
@@ -230,18 +257,23 @@ class OciRegion:
 
     @cached_property
     def internet_gateway(self):
-        existing = self._find_internet_gateway()
-        if existing:
-            self._add_internet_gateway_route(existing)
-            return existing
-        return self._create_internet_gateway()
+        with KEY_BASED_LOCKS.get_lock("oci--internet-gateway"):
+            existing = self._find_internet_gateway()
+            if existing:
+                return existing
+            return self._create_internet_gateway()
 
     def _find_internet_gateway(self):
-        """Find existing internet gateway for this VCN."""
-        igws = self.network_client.list_internet_gateways(compartment_id=self.compartment_id, vcn_id=self.vcn.id).data
-        for igw in igws:
-            if igw.lifecycle_state == "AVAILABLE":
-                return igw
+        """Find existing internet gateway for the VCN."""
+        inet_gateways = oci.pagination.list_call_get_all_results_generator(
+            self.network.list_internet_gateways,
+            yield_mode="record",
+            compartment_id=self.compartment_id,
+            vcn_id=self.vcn.id,
+        )
+        while current_inet_gateway := next(inet_gateways, None):
+            if current_inet_gateway.lifecycle_state == "AVAILABLE":
+                return current_inet_gateway
         return None
 
     def _create_internet_gateway(self):
@@ -254,100 +286,119 @@ class OciRegion:
             display_name=f"{self.SCT_VCN_NAME}-igw",
             freeform_tags=self._base_tags(f"{self.SCT_VCN_NAME}-igw"),
         )
-        response = self.network_client.create_internet_gateway(details)
-        igw = self._wait_for_state(
-            self.network_client, self.network_client.get_internet_gateway, response.data.id, "AVAILABLE"
-        )
-
-        # Add route to internet gateway in the VCN's default route table
-        self._add_internet_gateway_route(igw)
+        response = self.network.create_internet_gateway(details)
+        igw = self._wait_for_state(self.network, self.network.get_internet_gateway, response.data.id, "AVAILABLE")
 
         return igw
 
-    def _add_internet_gateway_route(self, internet_gateway):
-        """Add a route rule to the default route table for the internet gateway."""
+    def _add_nat_gateway_route(self, nat_gateway):
+        """Add a route rule to the default route table for the nat gateway."""
         route_table = self.vcn.default_route_table_id
-        LOGGER.info("Adding internet gateway route to default route table")
+        LOGGER.info("Adding nat gateway route to default route table")
 
         # Get current route table
-        rt = self.network_client.get_route_table(route_table).data
+        rt = self.network.get_route_table(route_table).data
 
-        # Check if route to internet gateway already exists
+        # Check if route to nat gateway already exists
         existing_rules = {(route.network_entity_id, route.destination) for route in rt.route_rules}
 
         new_route_rules = list(rt.route_rules) if rt.route_rules else []
-        if (internet_gateway.id, "0.0.0.0/0") not in existing_rules:
+        if (nat_gateway.id, "0.0.0.0/0") not in existing_rules:
             new_route_rules.append(
                 RouteRule(
                     destination="0.0.0.0/0",
                     destination_type="CIDR_BLOCK",
-                    network_entity_id=internet_gateway.id,
-                    description="Route to internet gateway",
-                )
-            )
-        if self.vcn_ipv6_cidr and (internet_gateway.id, "::/0") not in existing_rules:
-            new_route_rules.append(
-                RouteRule(
-                    destination="::/0",
-                    destination_type="CIDR_BLOCK",
-                    network_entity_id=internet_gateway.id,
-                    description="Route to internet gateway (IPv6)",
+                    network_entity_id=nat_gateway.id,
+                    description="Route to nat gateway",
                 )
             )
 
         if len(new_route_rules) == len(rt.route_rules or []):
-            LOGGER.info("Internet gateway routes already exist")
+            LOGGER.info("Nat gateway routes already exist")
             return
 
         update_details = UpdateRouteTableDetails(route_rules=new_route_rules)
-        self.network_client.update_route_table(route_table, update_details)
-        LOGGER.info("Internet gateway route added successfully")
+        self.network.update_route_table(route_table, update_details)
+        LOGGER.info("Nat gateway route added successfully")
 
-    def subnet_name(self, ad: str, subnet_index: Optional[int] = None) -> str:
+    def subnet_name(self, subnet_index: Optional[int] = None, public: bool = False) -> str:
+        # We append "-public" or "-private" to distinguish subnets.
+        # This allows having both public and private subnets in the same VCN.
         suffix = f"-{subnet_index}" if subnet_index is not None else ""
-        return self.SCT_SUBNET_NAME_TMPL.format(ad=self._short_ad(ad), index=suffix)
+        type_suffix = "-public" if public else "-private"
+        return self.SCT_SUBNET_NAME_TMPL.format(index=suffix) + type_suffix
 
-    def subnet(self, ad: str, subnet_index: Optional[int] = None):
-        name = self.subnet_name(ad, subnet_index=subnet_index)
-        subnets = self.network_client.list_subnets(
-            compartment_id=self.compartment_id, vcn_id=self.vcn.id, display_name=name
-        ).data
-        for subnet in subnets:
-            if subnet.lifecycle_state == "AVAILABLE":
-                return subnet
+    def subnet(
+        self,
+        subnet_index: Optional[int] = None,
+        public: bool = False,
+        _cache: dict = {},  # noqa: B006
+    ):
+        if existing := _cache.get((subnet_index, public)):
+            return existing
+        with KEY_BASED_LOCKS.get_lock(f"oci-subnet--i-{subnet_index}--public-{public}"):
+            name = self.subnet_name(subnet_index=subnet_index, public=public)
+            subnets = oci.pagination.list_call_get_all_results_generator(
+                self.network.list_subnets,
+                yield_mode="record",
+                compartment_id=self.compartment_id,
+                vcn_id=self.vcn.id,
+                display_name=name,
+            )
+            while current_subnet := next(subnets, None):
+                if current_subnet.lifecycle_state == "AVAILABLE":
+                    _cache[(subnet_index, public)] = current_subnet
+                    return current_subnet
         return None
 
-    def create_subnet(self, ad: str, ipv4_cidr, ipv6_cidr, subnet_index: Optional[int] = None):
-        name = self.subnet_name(ad, subnet_index=subnet_index)
-        if self.subnet(ad, subnet_index=subnet_index):
-            LOGGER.info("Subnet '%s' already exists in %s", name, ad)
-            return
-        LOGGER.info("Creating subnet '%s' in %s", name, ad)
-        details = CreateSubnetDetails(
-            availability_domain=ad,
+    def create_subnet(
+        self,
+        ipv4_cidr=None,
+        ipv6_cidr=None,
+        subnet_index: Optional[int] = None,
+        public: bool = False,
+    ):
+        name = self.subnet_name(subnet_index=subnet_index, public=public)
+        if subnet := self.subnet(subnet_index=subnet_index, public=public):
+            LOGGER.info("Subnet '%s' already exists", name)
+            return subnet
+
+        if ipv4_cidr is None:
+            subnet_cidr4s = list(self.vcn_ipv4_cidr.subnets(prefixlen_diff=8))
+            subnet_cidr6s = list(self.vcn_ipv6_cidr.subnets(prefixlen_diff=8)) if self.vcn_ipv6_cidr else []
+            for i in range(len(subnet_cidr4s)):  # NOTE: must be 255 at max using /24 masks
+                try:
+                    subnet_cidr4 = subnet_cidr4s[i]
+                    subnet_cidr6 = subnet_cidr6s[i] if i < len(subnet_cidr6s) else None
+                    return self.create_subnet(
+                        ipv4_cidr=subnet_cidr4,
+                        ipv6_cidr=subnet_cidr6,
+                        subnet_index=subnet_index,
+                        public=public,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning("Failed to create a %s subnet: %s", ("public" if public else "private"), exc)
+                    time.sleep(2)
+                    continue
+            return self.subnet(subnet_index=subnet_index, public=public)
+
+        LOGGER.info("Creating regional subnet '%s' (public=%s)", name, public)
+        details_kwargs = dict(
             cidr_block=str(ipv4_cidr),
             compartment_id=self.compartment_id,
             vcn_id=self.vcn.id,
             display_name=name,
-            prohibit_public_ip_on_vnic=False,
+            prohibit_public_ip_on_vnic=not public,
             security_list_ids=[self.security_list.id],
-            route_table_id=self.vcn.default_route_table_id,
+            route_table_id=(self.public_route_table.id if public else self.private_route_table.id),
             dhcp_options_id=self.vcn.default_dhcp_options_id,
             freeform_tags=self._base_tags(name),
-            ipv6_cidr_block=str(ipv6_cidr),
         )
-        response = self.network_client.create_subnet(details)
-        self._wait_for_state(self.network_client, self.network_client.get_subnet, response.data.id, "AVAILABLE")
-
-    def ensure_subnets(self):
-        cidr_iter = self.vcn_ipv4_cidr.subnets(prefixlen_diff=8)
-        ipv6_iter = None
-        if self.vcn_ipv6_cidr:
-            ipv6_iter = self.vcn_ipv6_cidr.subnets(prefixlen_diff=8)
-        for _ in range(self.SCT_SUBNETS_PER_AD):
-            for ad in self.availability_domains:
-                ipv6_cidr = next(ipv6_iter) if ipv6_iter else None
-                self.create_subnet(ad=ad, ipv4_cidr=next(cidr_iter), ipv6_cidr=ipv6_cidr, subnet_index=None)
+        if ipv6_cidr:
+            details_kwargs["ipv6_cidr_block"] = str(ipv6_cidr)
+        details = CreateSubnetDetails(**details_kwargs)
+        response = self.network.create_subnet(details)
+        return self._wait_for_state(self.network, self.network.get_subnet, response.data.id, "AVAILABLE")
 
     def setup_defined_tags(self):
         """Set up OCI defined tags required by SCT.
@@ -365,9 +416,9 @@ class OciRegion:
 
             # Create identity client for home region if needed
             if self.region_name == home_region:
-                home_identity_client = self.identity_client
+                home_identity_client = self.identity
             else:
-                home_identity_client, _ = get_oci_identity_client(region=home_region)
+                home_identity_client = self.oci_service.get_identity_client(region=home_region)
 
             # 1. Get or create the tag namespace
             LOGGER.info("Checking for tag namespace '%s'...", TAG_NAMESPACE)
@@ -436,31 +487,34 @@ class OciRegion:
             The home region name (e.g., 'us-ashburn-1')
         """
         try:
-            # List all region subscriptions to find the home region
-            region_subscriptions = self.identity_client.list_region_subscriptions(self._config["tenancy"]).data
-
-            for region_sub in region_subscriptions:
-                if region_sub.is_home_region:
-                    LOGGER.debug("Found home region: %s", region_sub.region_name)
-                    return region_sub.region_name
-
+            region_subscriptions = oci.pagination.list_call_get_all_results_generator(
+                self.identity.list_region_subscriptions, yield_mode="record", tenancy_id=self._config["tenancy"]
+            )
+            first_region = ""
+            while current_region_subscription := next(region_subscriptions, None):
+                if first_region == "":
+                    first_region = current_region_subscription.region_name
+                if current_region_subscription.is_home_region:
+                    LOGGER.debug("Found home region: %s", current_region_subscription.region_name)
+                    return current_region_subscription.region_name
             # Fallback: if no home region found, use the first region
-            if region_subscriptions:
-                LOGGER.warning("No home region found, using first region: %s", region_subscriptions[0].region_name)
-                return region_subscriptions[0].region_name
-
+            if first_region:
+                LOGGER.warning("No home region found, using first region: %s", first_region)
+                return first_region
             raise ValueError("No region subscriptions found for tenancy")
-
         except Exception as exc:
             LOGGER.error("Failed to determine home region: %s", exc)
             raise
 
     def configure_network(self):
-        # Ensure base resources exist
         _ = self.vcn
         _ = self.security_list
-        _ = self.internet_gateway  # Create internet gateway for outbound connectivity
-        self.ensure_subnets()
+        # NOTE: private subnet using nat gateway
+        _ = self.nat_gateway
+        self.create_subnet(public=False)
+        # NOTE: public subnet using internet gateway
+        _ = self.internet_gateway
+        self.create_subnet(public=True)
 
     def configure(self):
         """Configure all required resources for SCT in this OCI region."""
@@ -468,11 +522,6 @@ class OciRegion:
         self.setup_defined_tags()
         self.configure_network()
         LOGGER.info("Region configured successfully.")
-
-    @staticmethod
-    def _short_ad(ad_name: str) -> str:
-        # OCI ADs typically end with "-AD-1", "-AD-2". Keep a compact suffix for naming.
-        return ad_name.split("-AD-")[-1].lower()
 
     @staticmethod
     def _dns_label_from_name(name: str) -> str:
