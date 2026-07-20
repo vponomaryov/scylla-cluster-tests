@@ -38,6 +38,7 @@ def _base_node_init(
     self._private_ip_address_cached = None
     self._public_ip_address_cached = None
     self._ipv6_ip_address_cached = None
+    self.scylla_network_configuration = None
     self.log = Mock()
 
 

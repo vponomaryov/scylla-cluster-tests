@@ -542,18 +542,21 @@ class OciRegion:
         )
         return ngw
 
-    def subnet_name(self, public: bool = False) -> str:
+    def subnet_name(self, public: bool = False, nic_index: int = 0) -> str:
         # We append "-public" or "-private" to distinguish subnets.
         # This allows having both public and private subnets in the same VCN.
+        # Secondary NIC subnets get an additional "-nicN" suffix.
         suffix = "-public" if public else "-private"
+        if nic_index > 0:
+            suffix += f"-nic{nic_index}"
         return self.SCT_SUBNET_NAME_TMPL.format(suffix=suffix)
 
-    def subnet(self, public: bool = False, _cache: dict = {}):  # noqa: B006
-        cache_key = (self.region_name, public)
+    def subnet(self, public: bool = False, nic_index: int = 0, _cache: dict = {}):  # noqa: B006
+        cache_key = (self.region_name, public, nic_index)
         if existing := _cache.get(cache_key):
             return existing
-        with KEY_BASED_LOCKS.get_lock(f"oci-subnet-{self.region_name}-public-{public}"):
-            name = self.subnet_name(public=public)
+        with KEY_BASED_LOCKS.get_lock(f"oci-subnet-{self.region_name}-public-{public}-nic-{nic_index}"):
+            name = self.subnet_name(public=public, nic_index=nic_index)
             subnets = oci.pagination.list_call_get_all_results_generator(
                 self.network_client.list_subnets,
                 yield_mode="record",
@@ -572,9 +575,10 @@ class OciRegion:
         ipv4_cidr=None,
         ipv6_cidr=None,
         public: bool = False,
+        nic_index: int = 0,
     ):
-        name = self.subnet_name(public=public)
-        if subnet := self.subnet(public=public):
+        name = self.subnet_name(public=public, nic_index=nic_index)
+        if subnet := self.subnet(public=public, nic_index=nic_index):
             LOGGER.info("Subnet '%s' already exists", name)
             return subnet
 
@@ -589,32 +593,50 @@ class OciRegion:
                         ipv4_cidr=subnet_cidr4,
                         ipv6_cidr=subnet_cidr6,
                         public=public,
+                        nic_index=nic_index,
                     )
                 except oci.exceptions.ServiceError as exc:
                     LOGGER.warning("Failed to create a %s subnet: %s", ("public" if public else "private"), exc)
                     time.sleep(2)
                     continue
-            subnet = self.subnet(public=public)
+            subnet = self.subnet(public=public, nic_index=nic_index)
             if subnet is None:
                 raise RuntimeError("Failed to create '{public}' subnet" % public)
             else:
                 return subnet
 
-        LOGGER.info("Creating regional subnet '%s' (public=%s)", name, public)
+        if ipv6_cidr is None:
+            subnet_cidr6s = list(self.vcn_ipv6_cidr.subnets(prefixlen_diff=8))
+            used_v6 = set()
+            all_subnets = oci.pagination.list_call_get_all_results(
+                self.network_client.list_subnets,
+                compartment_id=self.compartment_id,
+                vcn_id=self.vcn.id,
+            ).data
+            for s in all_subnets:
+                for block in getattr(s, "ipv6_cidr_blocks", None) or []:
+                    used_v6.add(block)
+            for cidr6 in subnet_cidr6s:
+                if str(cidr6) not in used_v6:
+                    ipv6_cidr = cidr6
+                    break
+            if ipv6_cidr is None:
+                raise RuntimeError(f"No free IPv6 CIDR available for subnet '{name}'")
+
+        LOGGER.info("Creating regional subnet '%s' (public=%s, nic_index=%d)", name, public, nic_index)
         details_kwargs = dict(
             cidr_block=str(ipv4_cidr),
             compartment_id=self.compartment_id,
             vcn_id=self.vcn.id,
             display_name=name,
-            dns_label=self._subnet_dns_label(public=public),
+            dns_label=self._subnet_dns_label(public=public, nic_index=nic_index),
             prohibit_public_ip_on_vnic=not public,
             security_list_ids=[self.security_list.id],
             route_table_id=(self.public_route_table.id if public else self.private_route_table.id),
             dhcp_options_id=self.vcn.default_dhcp_options_id,
             freeform_tags=self._base_tags(name),
+            ipv6_cidr_block=str(ipv6_cidr),
         )
-        if ipv6_cidr:
-            details_kwargs["ipv6_cidr_block"] = str(ipv6_cidr)
         details = CreateSubnetDetails(**details_kwargs)
         response = self.network_client.create_subnet(details)
         return self._wait_for_state(
@@ -929,7 +951,7 @@ class OciRegion:
                 "'hydra prepare-regions --cloud-provider oci'."
             )
 
-    def _subnet_dns_label(self, public: bool) -> str:
+    def _subnet_dns_label(self, public: bool, nic_index: int = 0) -> str:
         """Create a deterministic RFC-compliant subnet DNS label.
 
         Labels must be <=15 characters, alphanumeric, start with a letter and be
@@ -937,6 +959,8 @@ class OciRegion:
         """
         visibility = "public" if public else "private"
         label_source = f"{self.region_name}-{visibility}"
+        if nic_index > 0:
+            label_source += f"-nic{nic_index}"
         checksum = hashlib.sha1(label_source.encode("utf-8")).hexdigest()[:7]
         base = self._dns_label_from_name(visibility)
         return f"{base[:7]}{checksum}"
