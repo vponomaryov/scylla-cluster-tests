@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from sdcm.cluster_oci import OciCluster, OciNode
+from sdcm.cluster_oci import CreateOciNodeError, OciCluster, OciNode
 from sdcm.utils.oci_utils import SECONDARY_VNICS_SCRIPT_PATH
 
 from unit_tests.lib.oci_test_helpers import (
@@ -500,3 +500,55 @@ def test_configure_secondary_vnics_os_passes_vnic_count_and_primary_ip(mock_nic_
     assert f"{SECONDARY_VNICS_SCRIPT_PATH} 3 10.0.1.10" in commands
     unit_command = next(command for command in commands if "/etc/systemd/system/" in command)
     assert f"ExecStart={SECONDARY_VNICS_SCRIPT_PATH} 3 10.0.1.10" in unit_command
+
+
+def _oci_node_with_dns_names(dns_names, use_dns_names=True):
+    node = OciNode(make_cloud_instance(private_ip="10.1.5.22"), MOCK_CREDENTIALS, MOCK_PARENT_CLUSTER)
+    node.__dict__["use_dns_names"] = use_dns_names
+    node.scylla_network_configuration = Mock(
+        network_interfaces=[Mock(dns_private_name=dns_name) for dns_name in dns_names]
+    )
+    node.check_dns_ready = Mock(return_value=True)
+    return node
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_wait_for_private_dns_records_checks_every_interface():
+    """Both the primary and the secondary VNIC records must be waited for.
+
+    'broadcast_rpc_address' resolves to the secondary VNIC DNS name in a two-interface
+    topology, and that record is published later than the primary one because SCT attaches
+    the secondary VNIC only once the instance is already running.
+    """
+    node = _oci_node_with_dns_names(
+        ["node-primary.private45ba196.sct2vcn.oraclevcn.com", "node-nic1.private805e3f9.sct2vcn.oraclevcn.com"]
+    )
+
+    node._wait_for_private_dns_records(timeout=5, interval=1)
+
+    checked = sorted(call.kwargs["dns_host"] for call in node.check_dns_ready.call_args_list)
+    assert checked == [
+        "node-nic1.private805e3f9.sct2vcn.oraclevcn.com",
+        "node-primary.private45ba196.sct2vcn.oraclevcn.com",
+    ]
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_wait_for_private_dns_records_raises_on_unresolvable_record():
+    """An unresolvable record must fail node creation, not leave Scylla to crash on startup."""
+    unresolvable = "node-nic1.private805e3f9.sct2vcn.oraclevcn.com"
+    node = _oci_node_with_dns_names([unresolvable])
+    node.check_dns_ready = Mock(return_value=False)
+
+    with pytest.raises(CreateOciNodeError, match=f"Private DNS record '{unresolvable}'"):
+        node._wait_for_private_dns_records(timeout=5, interval=1)
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_wait_for_private_dns_records_skipped_without_dns_names():
+    """With 'use_dns_names' off, Scylla is configured with IPs, so there is nothing to wait for."""
+    node = _oci_node_with_dns_names(["node-nic1.private805e3f9.sct2vcn.oraclevcn.com"], use_dns_names=False)
+
+    node._wait_for_private_dns_records(timeout=5, interval=1)
+
+    node.check_dns_ready.assert_not_called()

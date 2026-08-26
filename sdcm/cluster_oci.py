@@ -128,6 +128,33 @@ class OciNode(cluster.BaseNode):
                     self.refresh_ip_address()
             else:
                 self.refresh_network_interfaces_info()
+            self._wait_for_private_dns_records()
+
+    def _wait_for_private_dns_records(self, timeout: int = 300, interval: int = 10) -> None:
+        """Wait until every private DNS name this node gets configured with resolves on the node.
+
+        OCI publishes the private DNS record of a VNIC asynchronously, and the secondary VNICs are
+        attached by SCT only once the instance is already running, so their records show up later
+        than the primary one. Scylla aborts at startup when it cannot resolve its own
+        'listen_address' / 'broadcast_rpc_address' and reports it as an opaque
+        "Couldn't resolve broadcast_rpc_address", so wait for the records to appear here instead.
+        """
+        if not self.use_dns_names or not (config := self.scylla_network_configuration):
+            return
+        dns_names = sorted(
+            {interface.dns_private_name for interface in config.network_interfaces if interface.dns_private_name}
+        )
+        if not dns_names:
+            return
+        self.log.info("Waiting for the private DNS records of %s: %s", self.name, ", ".join(dns_names))
+        for dns_name in dns_names:
+            if self.check_dns_ready(timeout=timeout, interval=interval, dns_host=dns_name):
+                continue
+            raise CreateOciNodeError(
+                f"Private DNS record '{dns_name}' of node '{self.name}' is still unresolvable after "
+                f"{timeout}s. Scylla cannot start without resolving its own 'listen_address' and "
+                f"'broadcast_rpc_address'."
+            )
 
     def _set_network_configuration_safe(self):
         """Build and validate network config; set None on failure (e.g. IPv6 not yet available)."""
