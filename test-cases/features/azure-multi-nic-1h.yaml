@@ -1,0 +1,92 @@
+test_metadata:
+  description: >-
+    Cheap, short Azure smoke test for the 'scylla_network_config' multi-NIC support. Every VM type -
+    DB, loader and monitor - is given a two-interface layout, and every Scylla address except
+    'test_communication' is pinned to the secondary interface, so a run only gets past cluster setup
+    if the secondary subnets, the OS-level routing SCT installs on them and the addresses Scylla
+    binds and advertises all line up. 'test_communication' is IPv6, so the same run also covers the
+    dual-stack VNet and the routable IPv6 Public IP that Azure reaches by DNAT. The stress load is
+    deliberately tiny: it exists to prove CQL and gossip keep flowing over the secondary NIC, not to
+    exercise the cluster.
+  test_type: features
+  tier: ondemand
+  duration_class: short
+  supported_backends:
+    - azure
+  stress_tools:
+    - cassandra-stress
+  workload: mixed
+  features:
+    - ipv6
+  team_ownership: core-test-infra
+
+test_duration: 90
+
+n_db_nodes: 3
+n_loaders: 1
+n_monitor_nodes: 1
+
+# Smallest sizes that carry 2 NICs on Azure. Picked literally rather than through 'sizing_*'
+# constraints: this job is Azure-only and its whole point is the NIC count, which the resolver does
+# not know about.
+#
+# All three are 4 vCPU, and that is the binding constraint rather than the 'MaxNetworkInterfaces' of
+# the SKU. SCT creates every NIC with accelerated networking enabled
+# (sdcm/provision/azure/network_interface_provider.py), and Azure restricts a 2-vCPU size to a
+# single accelerated NIC - so Standard_F2s_v2 and Standard_D2_v4 are rejected at VM-create time with
+# 'VmSizeRestrictedToSingleNicWithAcceleratedNetworkingEnable' even though both advertise
+# 'MaxNetworkInterfaces: 2'. The SKU API does not publish that restriction anywhere, so it cannot be
+# caught before the create call. Do not shrink these below 4 vCPU.
+azure_instance_type_db: 'Standard_L4s_v4'  # 4 vCPU, 32 GB, 960 GB NVMe - cheapest Lsv4 with local disk
+azure_instance_type_loader: 'Standard_F4s_v2'  # 4 vCPU, 8 GB
+azure_instance_type_monitor: 'Standard_D4_v4'  # 4 vCPU, 16 GB
+
+# Two interfaces, and a dual-stack node. Everything Scylla binds and advertises is IPv4 on the
+# secondary NIC; only 'test_communication' stays on the primary one, which is where Azure attaches
+# the public addresses and the only place SCT can reach a node before the secondary NICs are
+# configured.
+#
+# 'test_communication' is the address flipped to IPv6, and it is the only one that can be flipped on
+# its own: the other four map straight onto scylla.yaml fields that come in pairs
+# (listen_address/broadcast_address, rpc_address/broadcast_rpc_address), so changing the family of
+# one alone would have Scylla advertise an address nothing is listening on. 'test_communication'
+# binds nothing - it only says how SCT reaches the node - and it is also the one that turns on
+# everything Azure-specific about IPv6 here: a dual-stack VNet and a billed IPv6 Public IP reached
+# by DNAT, which is what 'public: true' has to mean on Azure since a Public IP never lands on the
+# VM's interface. SCT then SSHes over IPv6 while CQL keeps flowing over the IPv4 secondary NIC
+# ('cql_address' falls back to 'broadcast_rpc_address' once SSH is IPv6), so a single run covers
+# both families.
+scylla_network_config:
+  - address: listen_address  # Address Scylla listens for connections from other nodes.
+    ip_type: ipv4
+    public: false
+    listen_all: false
+    use_dns: false
+    nic: 1
+  - address: rpc_address  # Address on which Scylla expects CQL client connections.
+    ip_type: ipv4
+    public: false
+    listen_all: false
+    use_dns: false
+    nic: 1
+  - address: broadcast_rpc_address  # Address broadcast to clients. Related to rpc_address.
+    ip_type: ipv4
+    public: false  # must be private when there are multiple interfaces
+    use_dns: false
+    nic: 1
+  - address: broadcast_address  # Address broadcast to other nodes. Related to listen_address.
+    ip_type: ipv4
+    public: false  # must be private when there are multiple interfaces
+    use_dns: false
+    nic: 1
+  - address: test_communication  # Type of IP used to connect from test to DB/monitor instances
+    ip_type: ipv6
+    public: true  # the routable IPv6, reached by DNAT; SCT lives outside the VNet's ULA range
+    use_dns: false
+    nic: 0
+
+prepare_write_cmd: "cassandra-stress write no-warmup cl=QUORUM n=1000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=20 -pop seq=1..1000000 -col 'n=FIXED(5) size=FIXED(128)' -log interval=5"
+
+stress_cmd: "cassandra-stress mixed no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=20 -pop 'dist=uniform(1..1000000)' -col 'n=FIXED(5) size=FIXED(128)' -log interval=5"
+
+user_prefix: 'azure-multi-nic'
