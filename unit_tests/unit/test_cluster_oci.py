@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from sdcm.cluster_oci import CreateOciNodeError, OciCluster, OciNode
+from sdcm.cluster_oci import NVME_DIAGNOSTIC_COMMANDS, CreateOciNodeError, OciCluster, OciNode, ScyllaOciCluster
 from sdcm.utils.oci_utils import SECONDARY_VNICS_SCRIPT_PATH
 
 from unit_tests.lib.oci_test_helpers import (
@@ -552,3 +552,73 @@ def test_wait_for_private_dns_records_skipped_without_dns_names():
     node._wait_for_private_dns_records(timeout=5, interval=1)
 
     node.check_dns_ready.assert_not_called()
+
+
+def _oci_node_with_remoter():
+    node = OciNode(make_cloud_instance(), MOCK_CREDENTIALS, MOCK_PARENT_CLUSTER)
+    node.remoter = Mock()
+    node.install_package = Mock()
+    return node
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_collect_nvme_diagnostics_runs_every_command_with_sudo():
+    node = _oci_node_with_remoter()
+
+    node.collect_nvme_diagnostics()
+
+    assert [call.args[0] for call in node.remoter.sudo.call_args_list] == list(NVME_DIAGNOSTIC_COMMANDS)
+    assert all(call.kwargs["ignore_status"] for call in node.remoter.sudo.call_args_list)
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_collect_nvme_diagnostics_installs_missing_tools():
+    node = _oci_node_with_remoter()
+    node.remoter.run.side_effect = lambda command, **kwargs: Mock(ok=command != "command -v nvme")
+
+    node.collect_nvme_diagnostics()
+
+    node.install_package.assert_called_once_with("nvme-cli", ignore_status=True)
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_collect_nvme_diagnostics_continues_after_failing_steps():
+    """Diagnostics are best effort: a failed install or command must not stop the remaining commands."""
+    node = _oci_node_with_remoter()
+    node.remoter.run.return_value = Mock(ok=False)
+    node.install_package.side_effect = RuntimeError("apt failed")
+    node.remoter.sudo.side_effect = RuntimeError("SSH failed")
+
+    node.collect_nvme_diagnostics()
+
+    assert node.install_package.call_count == 2
+    assert node.remoter.sudo.call_count == len(NVME_DIAGNOSTIC_COMMANDS)
+
+
+@patch("sdcm.cluster.BaseNode.__init__", new=base_node_init)
+def test_is_local_nvme_disk_missing_is_false_when_check_fails():
+    node = _oci_node_with_remoter()
+    node.remoter.sudo.side_effect = RuntimeError("SSH failed")
+
+    assert node.is_local_nvme_disk_missing() is False
+
+
+@pytest.mark.parametrize("disk_missing", [True, False])
+def test_wait_for_preinstalled_scylla_collects_nvme_diagnostics_only_for_missing_disk(disk_missing):
+    node = Mock()
+    node.wait_for_machine_image_configured.side_effect = TimeoutError("machine image not configured")
+    node.is_local_nvme_disk_missing.return_value = disk_missing
+
+    with pytest.raises(TimeoutError, match="machine image not configured"):
+        ScyllaOciCluster._wait_for_preinstalled_scylla(node)
+
+    assert node.collect_nvme_diagnostics.called is disk_missing
+
+
+def test_wait_for_preinstalled_scylla_skips_diagnostics_on_success():
+    node = Mock()
+
+    ScyllaOciCluster._wait_for_preinstalled_scylla(node)
+
+    node.is_local_nvme_disk_missing.assert_not_called()
+    node.collect_nvme_diagnostics.assert_not_called()

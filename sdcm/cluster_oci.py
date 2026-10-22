@@ -44,6 +44,19 @@ from sdcm.utils.oci_utils import (
 LOGGER = logging.getLogger(__name__)
 SPOT_TERMINATION_CHECK_DELAY = 15
 SPOT_TERMINATION_CHECK_OVERHEAD = 5
+# Requested by OCI support to debug local NVMe devices missing on VM.DenseIO.E5.Flex instances
+NVME_DIAGNOSTIC_COMMANDS = (
+    "nvme list",
+    "nvme id-ctrl /dev/nvme0 | grep -Ei '^(vid|sn|mn|fr|nn|oacs|cntrltype)'",
+    "nvme list-ns /dev/nvme0",
+    "nvme list-ns /dev/nvme0 -a",
+    "nvme list-ctrl /dev/nvme0",
+    "nvme smart-log /dev/nvme0",
+    "nvme error-log /dev/nvme0",
+    "lspci -vvv -s 00:0a.0",
+    "dmesg | grep -i nvme",
+)
+NVME_DIAGNOSTIC_PACKAGES = {"nvme": "nvme-cli", "lspci": "pciutils"}
 
 
 class CreateOciNodeError(Exception):
@@ -99,6 +112,46 @@ class OciNode(cluster.BaseNode):
     def wait_for_cloud_init(self):
         # NOTE: cloud-init gets checked by sdcm/provision/helpers/cloud_init
         pass
+
+    def is_local_nvme_disk_missing(self) -> bool:
+        """Whether SMI aborted its setup because no local NVMe data disk appeared."""
+        try:
+            result = self.remoter.sudo(
+                "journalctl -u scylla-image-setup --no-pager | grep -q 'No data disk found'",
+                ignore_status=True,
+                verbose=False,
+                timeout=60,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.log.warning("Failed to check SMI setup log on %s: %s", self.name, exc)
+            return False
+        return result.ok
+
+    def collect_nvme_diagnostics(self) -> None:
+        """Run NVME_DIAGNOSTIC_COMMANDS and log their output, on a best-effort basis.
+
+        A failing step is logged and skipped, so that the rest of the commands still run.
+        """
+        for binary, package in NVME_DIAGNOSTIC_PACKAGES.items():
+            try:
+                if not self.remoter.run(f"command -v {binary}", ignore_status=True, verbose=False).ok:
+                    self.install_package(package, ignore_status=True)
+            except Exception as exc:  # noqa: BLE001
+                self.log.warning("Failed to install %s on %s: %s", package, self.name, exc)
+        for command in NVME_DIAGNOSTIC_COMMANDS:
+            try:
+                result = self.remoter.sudo(command, ignore_status=True, verbose=False, timeout=60)
+            except Exception as exc:  # noqa: BLE001
+                self.log.warning("NVMe diagnostics on %s: 'sudo %s' failed: %s", self.name, command, exc)
+                continue
+            self.log.info(
+                "NVMe diagnostics on %s: 'sudo %s' (exit code %s)\n%s%s",
+                self.name,
+                command,
+                result.exited,
+                result.stdout,
+                result.stderr,
+            )
 
     def init(self) -> None:
         nic_count = network_interfaces_count(self.parent_cluster.params)
@@ -675,7 +728,13 @@ class ScyllaOciCluster(cluster.BaseScyllaCluster, OciCluster):
 
     @staticmethod
     def _wait_for_preinstalled_scylla(node):
-        node.wait_for_machine_image_configured()
+        try:
+            node.wait_for_machine_image_configured()
+        except Exception:
+            if node.is_local_nvme_disk_missing():
+                node.log.error("SMI found no local NVMe data disk on %s, collecting NVMe diagnostics", node.name)
+                node.collect_nvme_diagnostics()
+            raise
 
     def _reuse_cluster_setup(self, node: OciNode) -> None:
         super()._reuse_cluster_setup(node)
